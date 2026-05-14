@@ -2,20 +2,15 @@
 
 ## Planned
 
-### Migrate `middleware.ts` to `proxy.ts` (Next.js 16)
-
-Next.js 16 deprecated the `middleware` file convention in favor of
-`proxy`. The build still emits the file but logs a warning:
-
-> ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
-
-Functionally the auth gate still runs (and the page-level `auth()`
-checks in `/` and `/projects` are belt-and-suspenders anyway), but the
-rename should happen before a future Next.js version actually removes
-the old convention. Mostly mechanical: rename `src/middleware.ts` →
-`src/proxy.ts`, verify the matcher syntax in the new file, redeploy.
+(nothing scheduled — see Completed for shipped work)
 
 ## Completed
+
+### Migrate `middleware.ts` to `proxy.ts` (Next.js 16)
+
+Renamed `src/middleware.ts` → `src/proxy.ts`. Body unchanged. The
+production build now reports `ƒ Proxy (Middleware)` instead of the
+deprecation warning Next.js 16 was emitting.
 
 ### Auto-generate technical secrets on first deploy
 
