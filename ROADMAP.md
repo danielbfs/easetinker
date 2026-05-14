@@ -2,23 +2,18 @@
 
 ## Planned
 
-### Reusable `nextjs-auth-docker-starter` template repo
+### Migrate `middleware.ts` to `proxy.ts` (Next.js 16)
 
-Extract the deploy-ready scaffold (Next.js + Auth.js + Prisma + Docker
-multi-stage build + auto-generated secrets bootstrap + Traefik labels)
-from this repo into a separate, project-neutral starter that can be
-forked for future projects without dragging EaseTinker-specific code
-(Tinker SDK worker, fine-tuning UI, BullMQ jobs) along for the ride.
+Next.js 16 deprecated the `middleware` file convention in favor of
+`proxy`. The build still emits the file but logs a warning:
 
-Scope of what to extract:
-- `docker/` (Dockerfile.next, init-secrets.sh, docker-entrypoint.sh)
-- `docker-compose.yml` skeleton (init-secrets + app + postgres + redis)
-- `src/lib/auth.ts` and basic NextAuth wiring
-- `src/middleware.ts` and `/login` page
-- `prisma/schema.prisma` with just `User`, `Account`, `Session`,
-  `VerificationToken` tables
-- `.env.example` listing only the human-supplied vars
-- `README.md` adapted for generic project naming
+> ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+Functionally the auth gate still runs (and the page-level `auth()`
+checks in `/` and `/projects` are belt-and-suspenders anyway), but the
+rename should happen before a future Next.js version actually removes
+the old convention. Mostly mechanical: rename `src/middleware.ts` →
+`src/proxy.ts`, verify the matcher syntax in the new file, redeploy.
 
 ## Completed
 
