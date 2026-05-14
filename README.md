@@ -151,8 +151,10 @@ This creates 4 containers:
 ### Step 5 — Run Database Migrations
 
 ```bash
-docker compose exec app npx prisma migrate deploy
+docker compose exec app pnpm exec prisma migrate deploy
 ```
+
+> Use `pnpm exec` (not `npx`), so the Prisma version pinned in `package.json` is used. `npx prisma` will silently fetch the latest version from the registry, which can be incompatible.
 
 ### Step 6 — Verify and Access
 
@@ -171,7 +173,22 @@ Open `https://easetinker.yourdomain.com` in your browser. Traefik configures SSL
 
 ## Updating to a New Version
 
-When a new version is released, connect to your VPS via SSH and run:
+Pick the section that matches how you set up the server in the first place.
+
+### Option A — Hostinger Docker Manager (UI-driven)
+
+If you installed via Hostinger's Docker Manager (the UI cloned the repo for you), the project directory `/docker/easetinker/` only contains `docker-compose.yml` and `.env` — **not** a git checkout. To update:
+
+1. Open the Hostinger Docker Manager UI for the project.
+2. Click **Rebuild** (or **Redeploy**). Hostinger clones the latest `main` into a temporary directory, rebuilds the images, and restarts the containers. Your `.env` and named volumes are preserved.
+3. After the rebuild finishes, apply migrations via SSH:
+   ```bash
+   docker compose -p easetinker exec app pnpm exec prisma migrate deploy
+   ```
+
+### Option B — Manual via SSH (git clone in `/docker/easetinker/`)
+
+This requires that you originally followed [Step 2](#step-2--clone-the-repository) and `/docker/easetinker/` is a git checkout:
 
 ```bash
 cd /docker/easetinker
@@ -183,7 +200,7 @@ git pull origin main
 docker compose up -d --build
 
 # 3. Apply any new database migrations
-docker compose exec app npx prisma migrate deploy
+docker compose exec app pnpm exec prisma migrate deploy
 
 # 4. Confirm everything is healthy
 docker compose ps

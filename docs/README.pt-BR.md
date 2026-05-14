@@ -151,8 +151,10 @@ Isso cria 4 containers:
 ### Passo 5 — Executar as Migrations do Banco
 
 ```bash
-docker compose exec app npx prisma migrate deploy
+docker compose exec app pnpm exec prisma migrate deploy
 ```
+
+> Use `pnpm exec` (e não `npx`), para que a versão do Prisma fixada em `package.json` seja usada. `npx prisma` baixa a última versão do registry silenciosamente, podendo ser incompatível.
 
 ### Passo 6 — Verificar e Acessar
 
@@ -171,7 +173,22 @@ Acesse `https://easetinker.seudominio.com` no navegador. O Traefik configura o S
 
 ## Atualizando para uma Nova Versão
 
-Quando uma nova versão for lançada, conecte-se via SSH ao seu VPS e execute:
+Escolha a seção que combina com a forma como você configurou o servidor originalmente.
+
+### Opção A — Hostinger Docker Manager (via UI)
+
+Se você instalou pelo Docker Manager da Hostinger (a UI fez o clone do repo pra você), o diretório `/docker/easetinker/` contém apenas `docker-compose.yml` e `.env` — **não** é um checkout git. Para atualizar:
+
+1. Abra o Docker Manager da Hostinger para o projeto.
+2. Clique em **Rebuild** (ou **Redeploy**). A Hostinger clona o `main` mais recente para um diretório temporário, rebuilda as imagens e reinicia os containers. Seu `.env` e volumes nomeados são preservados.
+3. Após o rebuild terminar, aplique as migrations via SSH:
+   ```bash
+   docker compose -p easetinker exec app pnpm exec prisma migrate deploy
+   ```
+
+### Opção B — Manual via SSH (git clone em `/docker/easetinker/`)
+
+Requer que você tenha originalmente seguido o [Passo 2](#passo-2--clonar-o-repositório) e que `/docker/easetinker/` seja um checkout git:
 
 ```bash
 cd /docker/easetinker
@@ -183,7 +200,7 @@ git pull origin main
 docker compose up -d --build
 
 # 3. Aplicar novas migrations do banco de dados
-docker compose exec app npx prisma migrate deploy
+docker compose exec app pnpm exec prisma migrate deploy
 
 # 4. Confirmar que tudo está saudável
 docker compose ps
