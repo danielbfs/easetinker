@@ -1,27 +1,41 @@
-# ─── Stage 1: deps ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS deps
-RUN apk add --no-cache openssl libc6-compat
-RUN corepack enable && corepack prepare pnpm@9 --activate
-WORKDIR /app
-
-COPY package.json pnpm-lock.yaml .npmrc ./
-COPY prisma ./prisma
-RUN pnpm install --frozen-lockfile
-RUN pnpm exec prisma generate
-
-# ─── Stage 2: builder ─────────────────────────────────────────────────────────
+# ─── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
-RUN apk add --no-cache openssl libc6-compat
+RUN apk add --no-cache openssl openssl-dev libc6-compat
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
+# Install dependencies (allow build scripts via flat install)
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile
+
+# Force rebuild of Prisma-related packages to ensure postinstall scripts run
+RUN pnpm rebuild @prisma/engines @prisma/client prisma || true
+
+# Copy source code (including prisma schema)
 COPY . .
 
+# Debug: show environment before prisma generate
+RUN echo "===== ENVIRONMENT DEBUG =====" \
+  && echo "Node: $(node --version)" \
+  && echo "pnpm: $(pnpm --version)" \
+  && echo "OpenSSL: $(openssl version)" \
+  && echo "=== node_modules/.bin/prisma ===" \
+  && ls -la node_modules/.bin/prisma || echo "no .bin/prisma" \
+  && echo "=== node_modules/prisma ===" \
+  && ls -la node_modules/prisma/ 2>&1 | head -10 || echo "no prisma dir" \
+  && echo "=== @prisma/engines binaries ===" \
+  && find node_modules/@prisma -name "libquery_engine*" 2>&1 | head -5 || echo "no engine bins" \
+  && find node_modules/.pnpm -name "libquery_engine*" 2>&1 | head -5 || echo "no engine bins in .pnpm" \
+  && echo "===== END DEBUG ====="
+
+# Generate Prisma Client
+RUN pnpm exec prisma generate --schema=./prisma/schema.prisma
+
+# Build Next.js
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
-# ─── Stage 3: runner ──────────────────────────────────────────────────────────
+# ─── Stage 2: runner ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
