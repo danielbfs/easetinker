@@ -1,0 +1,9 @@
+# Force LF line endings for files that run on Linux containers.
+# Without this, a clone on Windows with autocrlf=true would rewrite these
+# to CRLF on checkout, breaking shebangs (`/bin/sh^M: bad interpreter`).
+*.sh             text eol=lf
+docker/Dockerfile*  text eol=lf
+docker-compose*.yml text eol=lf
+
+# Lock files should never be transformed
+pnpm-lock.yaml   -text
