@@ -2,18 +2,46 @@
 Pydantic schemas for the EaseTinker worker API.
 """
 from typing import Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ValidateTinkerKeyRequest(BaseModel):
     api_key: str = Field(..., description="Tinker API key to validate")
 
 
+class ModelMeta(BaseModel):
+    """SDK-reported model entry enriched with tinker-cookbook metadata when available."""
+    model_config = ConfigDict(extra="allow")  # preserve SDK passthrough fields
+
+    name: str
+    organization: Optional[str] = None
+    version_str: Optional[str] = None
+    size_str: Optional[str] = None
+    is_chat: Optional[bool] = None
+    is_vl: Optional[bool] = None
+    recommended_renderer: Optional[str] = None
+
+
 class ValidateTinkerKeyResponse(BaseModel):
     valid: bool
     error: Optional[str] = None
-    supported_models: Optional[list[Any]] = None
+    supported_models: Optional[list[ModelMeta]] = None
     max_batch_size: Optional[int] = None
+
+
+class RecommendRequest(BaseModel):
+    base_model: str = Field(..., description="HuggingFace-style model id, e.g. 'meta-llama/Llama-3.1-8B'")
+    lora_rank: int = Field(default=32, ge=1, le=256)
+    train_mlp: bool = True
+    train_attn: bool = True
+    train_unembed: bool = True
+
+
+class RecommendResponse(BaseModel):
+    learning_rate: Optional[float] = None
+    lora_param_count: Optional[int] = None
+    recommended_renderer: Optional[str] = None
+    notes: list[str] = Field(default_factory=list)
 
 
 class StartJobRequest(BaseModel):

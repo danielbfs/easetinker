@@ -7,3 +7,5 @@ httpx>=0.27.0
 
 # Tinker SDK — https://tinker-docs.thinkingmachines.ai
 tinker
+# Tinker Cookbook — model_info, hyperparam_utils, supervised, renderers, checkpoint_utils
+tinker-cookbook

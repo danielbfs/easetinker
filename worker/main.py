@@ -16,6 +16,8 @@ from schemas import (
     HealthResponse,
     ValidateTinkerKeyRequest,
     ValidateTinkerKeyResponse,
+    RecommendRequest,
+    RecommendResponse,
 )
 from job_runner import JobRunner
 
@@ -83,6 +85,41 @@ _tinker_validate_lock = asyncio.Lock()
 VALIDATE_TIMEOUT_SECONDS = 20.0
 
 
+def _enrich_supported_models(models: list[dict]) -> list[dict]:
+    """Merge tinker-cookbook metadata into each SDK model entry.
+
+    Cookbook may not know every model the SDK reports (it lags new releases),
+    so each lookup is best-effort and falls back to the bare SDK fields.
+    """
+    try:
+        from tinker_cookbook import model_info
+    except ImportError:
+        logger.warning("tinker_cookbook unavailable; serving unenriched supported_models")
+        return models
+
+    enriched: list[dict] = []
+    for m in models:
+        # SDK field name varies — try the common ones, fall back to "unknown" so
+        # ModelMeta.name (required) is always populated.
+        name = m.get("model_name") or m.get("name") or m.get("id") or "unknown"
+        out = {**m, "name": name}
+        try:
+            attrs = model_info.get_model_attributes(name)
+            out.update(
+                organization=attrs.organization,
+                version_str=attrs.version_str,
+                size_str=attrs.size_str,
+                is_chat=attrs.is_chat,
+                is_vl=attrs.is_vl,
+                recommended_renderer=attrs.recommended_renderers[0]
+                if attrs.recommended_renderers else None,
+            )
+        except Exception as e:
+            logger.debug("No cookbook metadata for %s: %s", name, e)
+        enriched.append(out)
+    return enriched
+
+
 def _classify_tinker_error(msg: str) -> str:
     """Turn a raw SDK error string into a user-friendly message."""
     low = msg.lower()
@@ -129,15 +166,17 @@ async def validate_tinker_key(req: ValidateTinkerKeyRequest):
                 )
             supported = getattr(caps, "supported_models", None)
             max_batch = getattr(caps, "max_batch_size", None)
-            # supported_models items may be pydantic objects — coerce to dict/list
+            # supported_models items may be pydantic objects — coerce to dict/list,
+            # then merge cookbook metadata so the UI can group / badge models.
             if supported is not None:
                 try:
                     supported = [
                         m.model_dump() if hasattr(m, "model_dump") else m
                         for m in supported
                     ]
+                    supported = _enrich_supported_models(supported)
                 except Exception:
-                    pass
+                    logger.exception("Failed to normalize supported_models; serving raw SDK output")
             logger.info(f"Tinker key validated, {len(supported) if supported else 0} models")
             return ValidateTinkerKeyResponse(
                 valid=True,
@@ -148,6 +187,58 @@ async def validate_tinker_key(req: ValidateTinkerKeyRequest):
             raw = str(e)
             logger.warning(f"Tinker key validation failed: {raw}")
             return ValidateTinkerKeyResponse(valid=False, error=_classify_tinker_error(raw))
+
+
+@app.post(
+    "/tinker/recommend",
+    response_model=RecommendResponse,
+    dependencies=[Depends(verify_secret)],
+)
+async def recommend_hyperparams(req: RecommendRequest):
+    """Return cookbook-recommended hyperparameters for a base model + LoRA config.
+
+    Each cookbook call is wrapped: uncalibrated or unknown models yield notes
+    instead of an error, so the UI can fall back to manual entry gracefully.
+    """
+    notes: list[str] = []
+    lr: float | None = None
+    param_count: int | None = None
+    renderer: str | None = None
+
+    try:
+        from tinker_cookbook import hyperparam_utils, model_info
+    except ImportError:
+        return RecommendResponse(notes=["tinker_cookbook not installed in worker image"])
+
+    try:
+        lr = hyperparam_utils.get_lr(req.base_model, is_lora=True)
+    except NotImplementedError as e:
+        notes.append(f"Learning rate not calibrated for this model: {e}")
+    except Exception as e:
+        notes.append(f"Could not compute learning rate: {e}")
+
+    try:
+        param_count = hyperparam_utils.get_lora_param_count(
+            req.base_model,
+            lora_rank=req.lora_rank,
+            train_mlp=req.train_mlp,
+            train_attn=req.train_attn,
+            train_unembed=req.train_unembed,
+        )
+    except Exception as e:
+        notes.append(f"Could not compute LoRA parameter count: {e}")
+
+    try:
+        renderer = model_info.get_recommended_renderer_name(req.base_model)
+    except Exception as e:
+        notes.append(f"Could not determine renderer: {e}")
+
+    return RecommendResponse(
+        learning_rate=lr,
+        lora_param_count=param_count,
+        recommended_renderer=renderer,
+        notes=notes,
+    )
 
 
 @app.post("/jobs/start", dependencies=[Depends(verify_secret)])
